@@ -16,6 +16,10 @@ module.exports = {
   transform: {
     '^.+\\.[tj]s$': ['@swc/jest', swcJestConfig],
   },
+  // @nestjs/config@12 publica só ESM (sem build CJS) — sem isso, o
+  // require() do Jest quebra em "Unexpected token 'export'" assim que
+  // qualquer arquivo (direto ou transitivamente) importa ConfigService.
+  transformIgnorePatterns: ['node_modules/\\.pnpm/(?!(@nestjs\\+config))'],
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: 'test-output/jest/coverage',
 };

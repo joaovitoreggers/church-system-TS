@@ -8,15 +8,22 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: adts
-      POSTGRES_PASSWORD: adts
+      # adts_owner é dono das tabelas (migrations/seed). A API em runtime
+      # NUNCA se conecta com esse usuário — ver RUNTIME_DATABASE_URL
+      # (role adts_app, criada em docker/postgres/init.sql) no .env.
+      POSTGRES_USER: adts_owner
+      POSTGRES_PASSWORD: adts_owner
       POSTGRES_DB: adts
     ports:
-      # 5433 no host — evita colidir com um Postgres já em uso na máquina
+      # 5434 no host — evita colidir com um Postgres já em uso na máquina
       # (ex.: outro projeto rodando na porta padrão 5432).
-      - '5433:5432'
+      - '5434:5432'
     volumes:
       - adts_postgres_data:/var/lib/postgresql/data
+      # Só roda em um volume novo/vazio (primeira inicialização). Se o
+      # volume já existe de uma versão anterior, recrie com
+      # `docker compose down -v` antes de subir de novo.
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
   redis:
     image: redis:8-alpine

@@ -11,3 +11,95 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ─── Núcleo transversal (Sprint 1): tenancy, auth, auditoria ───────────────
+// Convenção: esta camada de infra fica em inglês (igual o resto do
+// ecossistema Nest/Prisma). Módulos de domínio futuros (membros,
+// tesouraria...) podem usar termos em português quando fizer sentido.
+//
+// RLS (Row Level Security) protege User, Role e AuditLog — as únicas
+// tabelas tenant-scoped deste sprint (ver migration SQL). Tenant não tem
+// RLS (é o próprio identificador do tenant, não algo escopado por ele).
+// UserRole/RefreshToken/PasswordReset NÃO têm RLS neste sprint — não têm
+// coluna tenantId própria e não entraram no escopo pedido; ver observação
+// no relatório.
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  users     User[]
+  roles     Role[]
+}
+
+model User {
+  id             String          @id @default(cuid())
+  tenantId       String? // null = platform superuser, vê tudo
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id])
+  email          String          @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  isSuperuser    Boolean         @default(false)
+  isTenantAdmin  Boolean         @default(false) // equivalente ao is_campo_admin do Django
+  createdAt      DateTime        @default(now())
+  userRoles      UserRole[]
+  refreshTokens  RefreshToken[]
+  passwordResets PasswordReset[]
+}
+
+model Role {
+  id          String     @id @default(cuid())
+  tenantId    String? // null = papel global/plataforma
+  tenant      Tenant?    @relation(fields: [tenantId], references: [id])
+  name        String
+  permissions String[] // ex.: ["members.view", "treasury.create"] — catálogo curado vem depois, aqui é só string livre
+  userRoles   UserRole[]
+
+  @@unique([tenantId, name])
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  userId      String?
+  username    String?
+  action      String // create|update|delete|login|logout|view|export
+  entityType  String?
+  entityId    String?
+  entityRepr  String?
+  description String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
