@@ -57,6 +57,16 @@ describe('Isolamento multi-tenant via RLS (Postgres real, Testcontainers)', () =
     );
     await owner.query(readFileSync(migration2Path, 'utf-8'));
 
+    // E a migration do Sprint 2 (colunas novas em Tenant/User) — o Prisma
+    // Client gerado a partir do schema.prisma ATUAL já espera essas
+    // colunas em qualquer query de User/Tenant, mesmo que este teste não
+    // as exercite diretamente.
+    const migration3Path = join(
+      __dirname,
+      '../../prisma/migrations/20261113210429_sprint2_branding_users/migration.sql',
+    );
+    await owner.query(readFileSync(migration3Path, 'utf-8'));
+
     // Dados de teste: dois tenants, um User em cada, mais Role/UserRole/
     // RefreshToken/PasswordReset por tenant — via owner, que ignora RLS (é
     // o dono das tabelas; é assim que seed/migrations sempre rodam).

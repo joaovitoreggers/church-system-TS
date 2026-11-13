@@ -34,6 +34,14 @@ import { TenancyContextService, TenancyContext } from '../tenancy/tenancy-contex
  * variável de instância de longa duração (perderia a atualização por
  * request) nem instanciar um PrismaClient por conta própria — é isso que
  * torna estruturalmente impossível esquecer o escopo por tenant.
+ *
+ * LIMITAÇÃO CONHECIDA (documentada desde o Sprint 1, resolvida aqui no
+ * Sprint 2): `client` abre uma transação NOVA por operação — não dá pra
+ * usar pra uma operação de negócio que precisa ser atômica entre várias
+ * tabelas (ex.: onboarding, que cria Tenant+User+Role+UserRole juntos e
+ * precisa de rollback total se qualquer parte falhar). Pra isso, use
+ * `runInTenantTransaction` abaixo: UMA transação real, contexto setado
+ * uma vez, callback recebe o `tx` pra fazer todas as escritas nele.
  */
 @Injectable()
 export class TenantPrismaService implements OnModuleDestroy {
@@ -56,6 +64,23 @@ export class TenantPrismaService implements OnModuleDestroy {
     return this.buildScopedClient(ctx);
   }
 
+  /**
+   * Pra operações de negócio que precisam ser atômicas entre múltiplas
+   * tabelas (rollback total se qualquer parte falhar) — algo que `client`
+   * não suporta de propósito, já que ele abre uma transação por operação.
+   * Seta o contexto UMA vez nesta transação e devolve o `tx` pro callback
+   * usar em todas as escritas.
+   */
+  async runInTenantTransaction<T>(
+    ctx: TenancyContext | undefined,
+    fn: (tx: PrismaClient) => Promise<T>,
+  ): Promise<T> {
+    return this.base.$transaction(async (tx) => {
+      await this.setSessionContext(tx, ctx);
+      return fn(tx as PrismaClient);
+    });
+  }
+
   private buildScopedClient(ctx: TenancyContext | undefined): PrismaClient {
     return this.base.$extends({
       query: {
@@ -69,17 +94,24 @@ export class TenantPrismaService implements OnModuleDestroy {
           }
 
           return this.base.$transaction(async (tx) => {
-            await tx.$executeRawUnsafe(
-              `SELECT set_config('app.current_tenant_id', $1, true), set_config('app.is_superuser', $2, true)`,
-              ctx?.tenantId ?? '',
-              ctx?.isSuperuser ? 'true' : 'false',
-            );
+            await this.setSessionContext(tx, ctx);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return (tx as any)[model][operation](args);
           });
         },
       },
     }) as PrismaClient;
+  }
+
+  private setSessionContext(
+    tx: Pick<PrismaClient, '$executeRawUnsafe'>,
+    ctx: TenancyContext | undefined,
+  ) {
+    return tx.$executeRawUnsafe(
+      `SELECT set_config('app.current_tenant_id', $1, true), set_config('app.is_superuser', $2, true)`,
+      ctx?.tenantId ?? '',
+      ctx?.isSuperuser ? 'true' : 'false',
+    );
   }
 
   onModuleDestroy() {

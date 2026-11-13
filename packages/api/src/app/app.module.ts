@@ -13,6 +13,9 @@ import { AuthModule } from '../auth/auth.module';
 import { CaslModule } from '../casl/casl.module';
 import { PoliciesGuard } from '../casl/policies.guard';
 import { AuditModule } from '../audit/audit.module';
+import { OnboardingModule } from '../onboarding/onboarding.module';
+import { UsersModule } from '../users/users.module';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
   imports: [
@@ -27,6 +30,9 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
     AuthModule,
     HealthModule,
+    OnboardingModule,
+    UsersModule,
+    TenantsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: PoliciesGuard }],

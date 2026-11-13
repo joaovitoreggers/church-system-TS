@@ -29,13 +29,24 @@ datasource db {
 // raciocínio de cada policy.
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  users     User[]
-  roles     Role[]
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  // Onboarding/branding (Sprint 2) — equivalentes aos campos de
+  // CampoEclesiastico no Django. logoKey é a key no object storage
+  // (nunca um caminho de disco local — ver media/object-storage.service.ts),
+  // não a URL: a URL é sempre assinada e gerada sob demanda.
+  logoKey          String?
+  cardTheme        String   @default("navy") // chave de CARD_PALETTES em @adts/shared-types
+  city             String?
+  state            String?
+  pastorPresidente String?
+  phone            String?
+  contactEmail     String?
+  users            User[]
+  roles            Role[]
 }
 
 model User {
@@ -48,6 +59,8 @@ model User {
   lastName       String?
   isSuperuser    Boolean         @default(false)
   isTenantAdmin  Boolean         @default(false) // equivalente ao is_campo_admin do Django
+  isActive       Boolean         @default(true) // desativação (Sprint 2) — nunca deleta, só desativa
+  signatureKey   String? // key no object storage da assinatura digital (sem remoção de fundo, diferente do logo)
   createdAt      DateTime        @default(now())
   userRoles      UserRole[]
   refreshTokens  RefreshToken[]

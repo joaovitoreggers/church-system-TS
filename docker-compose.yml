@@ -33,6 +33,37 @@ services:
     volumes:
       - adts_redis_data:/data
 
+  # Object storage (Sprint 2) — S3-compatible, substitui o MEDIA_ROOT em
+  # disco local do Django original. Em produção (EasyPanel) é o template
+  # de S3/MinIO deles; a API só muda via env (S3_ENDPOINT etc.), nunca
+  # muda de código.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: adts_minio
+      MINIO_ROOT_PASSWORD: adts_minio_secret
+    ports:
+      - '9000:9000' # API S3
+      - '9001:9001' # console web
+    volumes:
+      - adts_minio_data:/data
+
+  # Cria o bucket padrão uma vez e sai — a própria API nunca precisa de
+  # permissão pra criar bucket, só pra ler/escrever dentro de um que já
+  # existe.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 adts_minio adts_minio_secret; do sleep 1; done;
+      mc mb --ignore-existing local/adts-media;
+      "
+
 volumes:
   adts_postgres_data:
   adts_redis_data:
+  adts_minio_data:

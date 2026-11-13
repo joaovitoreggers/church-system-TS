@@ -21,6 +21,7 @@ const PUBLIC_PATHS = [
   '/api/auth/refresh',
   '/api/auth/password-reset/request',
   '/api/auth/password-reset/confirm',
+  '/api/onboarding/signup', // criação de tenant — rate-limitado no próprio controller (ver onboarding.controller.ts)
 ];
 
 /**
