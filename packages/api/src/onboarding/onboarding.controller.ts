@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { OnboardingService } from './onboarding.service';
 import { SignupDto } from './dto/signup.dto';
+import { MAX_IMAGE_BYTES } from '../media/image-validation';
 
 // Endpoint público (ver PUBLIC_PATHS em tenancy.middleware.ts). Criação de
 // tenant é o primeiro endpoint público além do login desde o Sprint 1, e é
@@ -20,7 +21,10 @@ export class OnboardingController {
   @HttpCode(201)
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: SIGNUP_LIMIT, ttl: SIGNUP_TTL_MS } })
-  @UseInterceptors(FileInterceptor('logo'))
+  // limits.fileSize rejeita ANTES de bufferizar — endpoint público, sem
+  // isso o rate-limit acima não impede um único request com um arquivo
+  // gigante de esgotar memória.
+  @UseInterceptors(FileInterceptor('logo', { limits: { fileSize: MAX_IMAGE_BYTES } }))
   async signup(@Body() dto: SignupDto, @UploadedFile() logo?: Express.Multer.File) {
     return this.onboarding.signup(dto, logo ? { buffer: logo.buffer, mimetype: logo.mimetype } : undefined);
   }

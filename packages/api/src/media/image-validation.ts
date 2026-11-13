@@ -4,7 +4,13 @@ import sharp from './sharp-safe';
 // problema de bundling nativo que o sharp-safe.ts resolve pro VALOR).
 import type SharpNamespace from 'sharp';
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — mesmo limite do Django original
+// 5 MB — mesmo limite do Django original. Exportado pra também ser usado
+// como `limits.fileSize` do Multer nos controllers (ver onboarding/users),
+// rejeitando o upload ANTES de bufferizar o arquivo inteiro em memória —
+// sem isso, um endpoint público aceitaria um arquivo arbitrariamente
+// grande antes dessa validação sequer rodar.
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_BYTES = MAX_IMAGE_BYTES;
 const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'gif', 'webp']);
 
 export class InvalidImageError extends Error {}

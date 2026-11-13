@@ -16,6 +16,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/token.types';
 import { CheckPolicies } from '../casl/check-policies.decorator';
+import { MAX_IMAGE_BYTES } from '../media/image-validation';
 
 @Controller('users')
 export class UsersController {
@@ -36,7 +37,7 @@ export class UsersController {
   }
 
   @Post('me/signature')
-  @UseInterceptors(FileInterceptor('signature'))
+  @UseInterceptors(FileInterceptor('signature', { limits: { fileSize: MAX_IMAGE_BYTES } }))
   uploadSignature(@CurrentUser() user: AccessTokenPayload, @UploadedFile() file: Express.Multer.File) {
     return this.users.uploadSignature(user, { buffer: file.buffer, mimetype: file.mimetype });
   }
