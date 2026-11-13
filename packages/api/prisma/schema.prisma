@@ -17,12 +17,16 @@ datasource db {
 // ecossistema Nest/Prisma). Módulos de domínio futuros (membros,
 // tesouraria...) podem usar termos em português quando fizer sentido.
 //
-// RLS (Row Level Security) protege User, Role e AuditLog — as únicas
-// tabelas tenant-scoped deste sprint (ver migration SQL). Tenant não tem
-// RLS (é o próprio identificador do tenant, não algo escopado por ele).
-// UserRole/RefreshToken/PasswordReset NÃO têm RLS neste sprint — não têm
-// coluna tenantId própria e não entraram no escopo pedido; ver observação
-// no relatório.
+// RLS (Row Level Security) protege as 7 tabelas desta camada:
+// - User/Role/AuditLog: policy direta via coluna tenantId própria.
+// - Tenant: não tem tenantId (ela É o tenant) — policy compara o próprio
+//   "id" com app.current_tenant_id.
+// - UserRole/RefreshToken/PasswordReset: não têm tenantId próprio — policy
+//   via EXISTS contra User (que já é tenant-scoped), herdando o isolamento
+//   sem duplicar a coluna.
+// Ver migrations 20261113121837_tenancy_auth_audit (User/Role/AuditLog) e
+// 20261113205325_rls_remaining_tables (as outras 4) pro SQL exato e o
+// raciocínio de cada policy.
 
 model Tenant {
   id        String   @id @default(cuid())

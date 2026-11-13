@@ -48,9 +48,18 @@ describe('Isolamento multi-tenant via RLS (Postgres real, Testcontainers)', () =
     const migrationSql = readFileSync(migrationPath, 'utf-8');
     await owner.query(migrationSql);
 
-    // Dados de teste: dois tenants, um User em cada — via owner, que
-    // ignora RLS (é o dono das tabelas; é assim que seed/migrations
-    // sempre rodam).
+    // Também aplica a migration que estende RLS pras 4 tabelas restantes
+    // (Tenant/UserRole/RefreshToken/PasswordReset) — mesma lógica: migration
+    // real do projeto, não reimplementada aqui.
+    const migration2Path = join(
+      __dirname,
+      '../../prisma/migrations/20261113205325_rls_remaining_tables/migration.sql',
+    );
+    await owner.query(readFileSync(migration2Path, 'utf-8'));
+
+    // Dados de teste: dois tenants, um User em cada, mais Role/UserRole/
+    // RefreshToken/PasswordReset por tenant — via owner, que ignora RLS (é
+    // o dono das tabelas; é assim que seed/migrations sempre rodam).
     await owner.query(`
       INSERT INTO "Tenant" (id, name, slug) VALUES
         ('tenant_a', 'Tenant A', 'tenant-a'),
@@ -58,6 +67,18 @@ describe('Isolamento multi-tenant via RLS (Postgres real, Testcontainers)', () =
       INSERT INTO "User" (id, "tenantId", email, "passwordHash") VALUES
         ('user_a', 'tenant_a', 'a@example.com', 'x'),
         ('user_b', 'tenant_b', 'b@example.com', 'x');
+      INSERT INTO "Role" (id, "tenantId", name, permissions) VALUES
+        ('role_a', 'tenant_a', 'admin', ARRAY[]::TEXT[]),
+        ('role_b', 'tenant_b', 'admin', ARRAY[]::TEXT[]);
+      INSERT INTO "UserRole" ("userId", "roleId") VALUES
+        ('user_a', 'role_a'),
+        ('user_b', 'role_b');
+      INSERT INTO "RefreshToken" (id, "userId", "tokenHash", "expiresAt") VALUES
+        ('rt_a', 'user_a', 'hash_a', now() + interval '1 day'),
+        ('rt_b', 'user_b', 'hash_b', now() + interval '1 day');
+      INSERT INTO "PasswordReset" (id, "userId", "tokenHash", "expiresAt") VALUES
+        ('pr_a', 'user_a', 'phash_a', now() + interval '1 day'),
+        ('pr_b', 'user_b', 'phash_b', now() + interval '1 day');
     `);
 
     const host = container.getHost();
@@ -116,6 +137,41 @@ describe('Isolamento multi-tenant via RLS (Postgres real, Testcontainers)', () =
     });
   });
 
+  describe('RLS estendido (Tenant via id próprio; UserRole/RefreshToken/PasswordReset via EXISTS em User)', () => {
+    it('Tenant: tenant A só vê a própria linha (nunca enumera B)', async () => {
+      const tenants = await tenancyContext.run({ tenantId: 'tenant_a', isSuperuser: false }, () =>
+        tenantPrisma.client.tenant.findMany({ select: { id: true } }),
+      );
+      expect(tenants).toEqual([{ id: 'tenant_a' }]);
+    });
+
+    it('Tenant: superuser vê os dois', async () => {
+      const tenants = await tenancyContext.run({ tenantId: null, isSuperuser: true }, () =>
+        tenantPrisma.client.tenant.findMany({ select: { id: true }, orderBy: { id: 'asc' } }),
+      );
+      expect(tenants).toEqual([{ id: 'tenant_a' }, { id: 'tenant_b' }]);
+    });
+
+    it('UserRole: tenant A só vê o vínculo do próprio usuário', async () => {
+      const userRoles = await tenancyContext.run({ tenantId: 'tenant_a', isSuperuser: false }, () =>
+        tenantPrisma.client.userRole.findMany({ select: { userId: true, roleId: true } }),
+      );
+      expect(userRoles).toEqual([{ userId: 'user_a', roleId: 'role_a' }]);
+    });
+
+    it('RefreshToken: tenant B só vê o próprio token (nunca o de A)', async () => {
+      const tokens = await tenancyContext.run({ tenantId: 'tenant_b', isSuperuser: false }, () =>
+        tenantPrisma.client.refreshToken.findMany({ select: { id: true } }),
+      );
+      expect(tokens).toEqual([{ id: 'rt_b' }]);
+    });
+
+    it('PasswordReset: sem contexto nenhum não vê nada — default-deny', async () => {
+      const resets = await tenantPrisma.client.passwordReset.findMany({ select: { id: true } });
+      expect(resets).toEqual([]);
+    });
+  });
+
   describe('direto via SQL, conectado como adts_app (sem passar pelo Prisma)', () => {
     it('tenant A só vê o próprio usuário', async () => {
       await appRaw.query(`SELECT set_config('app.current_tenant_id', 'tenant_a', false)`);
@@ -150,6 +206,19 @@ describe('Isolamento multi-tenant via RLS (Postgres real, Testcontainers)', () =
     it('adts_owner (dono da tabela) ignora RLS e vê tudo mesmo sem contexto', async () => {
       const result = await owner.query('SELECT id FROM "User" ORDER BY id');
       expect(result.rows).toEqual([{ id: 'user_a' }, { id: 'user_b' }]);
+    });
+
+    it('UserRole via EXISTS: tenant A só vê o próprio vínculo mesmo sem coluna tenantId na tabela', async () => {
+      await appRaw.query(`SELECT set_config('app.current_tenant_id', 'tenant_a', false)`);
+      await appRaw.query(`SELECT set_config('app.is_superuser', 'false', false)`);
+      const result = await appRaw.query('SELECT "userId" FROM "UserRole" ORDER BY "userId"');
+      expect(result.rows).toEqual([{ userId: 'user_a' }]);
+    });
+
+    it('Tenant via id próprio: tenant B não enumera o nome/slug de A', async () => {
+      await appRaw.query(`SELECT set_config('app.current_tenant_id', 'tenant_b', false)`);
+      const result = await appRaw.query('SELECT id FROM "Tenant" ORDER BY id');
+      expect(result.rows).toEqual([{ id: 'tenant_b' }]);
     });
   });
 });
