@@ -1,0 +1,31 @@
+name: adts-dev
+
+# Uso local apenas (desenvolvimento). Em produção o Postgres e o Redis são
+# os templates prontos do próprio EasyPanel — isso aqui não vai pra lá.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: adts
+      POSTGRES_PASSWORD: adts
+      POSTGRES_DB: adts
+    ports:
+      # 5433 no host — evita colidir com um Postgres já em uso na máquina
+      # (ex.: outro projeto rodando na porta padrão 5432).
+      - '5433:5432'
+    volumes:
+      - adts_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - adts_redis_data:/data
+
+volumes:
+  adts_postgres_data:
+  adts_redis_data:

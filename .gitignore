@@ -48,3 +48,13 @@ Thumbs.db
 .nx/polygraph
 .nx/self-healing
 .nx/migrate-runs
+test-output
+
+.angular
+
+__screenshots__/
+
+# env files (cada app documenta as suas em .env.example, que FICA versionado)
+.env
+.env.*.local
+
